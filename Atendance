@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Offline Fingerprint Attendance Demo</title>
+<style>
+body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f6f8fb;}
+button{background:#2468f0;color:#fff;border:0;padding:10px 18px;border-radius:8px;margin:8px;font-size:16px;cursor:pointer;}
+#log{margin-top:16px;font-size:14px;max-width:300px;text-align:center;color:#333;}
+</style>
+</head>
+<body>
+<h2>Fingerprint Attendance (Offline Demo)</h2>
+<p>Tap below to simulate check-in using your fingerprint.</p>
+<button id="register">Register Fingerprint</button>
+<button id="checkin">Check In</button>
+<div id="log"></div>
+
+<script>
+function bufferToBase64Url(buffer){
+  const bytes=new Uint8Array(buffer);
+  let str=''; for(const b of bytes) str+=String.fromCharCode(b);
+  return btoa(str).replace(/\+/g,'-').replace(/\//g,'_').replace(/=*$/,'');
+}
+function base64UrlToBuffer(base64url){
+  const padding='='.repeat((4-(base64url.length%4))%4);
+  const base64=(base64url+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const str=atob(base64);
+  const bytes=new Uint8Array(str.length);
+  for(let i=0;i<str.length;i++) bytes[i]=str.charCodeAt(i);
+  return bytes.buffer;
+}
+
+const log = msg => document.getElementById('log').textContent = msg;
+
+async function register() {
+  if (!window.PublicKeyCredential) return log('WebAuthn not supported.');
+  try {
+    const options = {
+      challenge: Uint8Array.from('randomChallenge', c=>c.charCodeAt(0)),
+      rp: { name: 'Local Demo' },
+      user: {
+        id: Uint8Array.from('demoUser', c=>c.charCodeAt(0)),
+        name: 'demo',
+        displayName: 'Demo User'
+      },
+      pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+      authenticatorSelection: { userVerification: 'required', authenticatorAttachment: 'platform' },
+    };
+    const credential = await navigator.credentials.create({ publicKey: options });
+    const key = bufferToBase64Url(credential.rawId);
+    localStorage.setItem('fingerprint_key', key);
+    log('✅ Registered successfully. You can now check in.');
+  } catch(e) {
+    log('❌ Registration failed: '+e.message);
+  }
+}
+
+async function checkin() {
+  if (!window.PublicKeyCredential) return log('WebAuthn not supported.');
+  const stored = localStorage.getItem('fingerprint_key');
+  if (!stored) return log('Register first.');
+  try {
+    const options = {
+      challenge: Uint8Array.from('demoChallenge', c=>c.charCodeAt(0)),
+      allowCredentials: [{ id: base64UrlToBuffer(stored), type: 'public-key' }],
+      userVerification: 'required',
+    };
+    await navigator.credentials.get({ publicKey: options });
+    const now = new Date().toLocaleString();
+    log('✅ Check-in recorded at ' + now);
+  } catch(e) {
+    log('❌ Authentication failed: '+e.message);
+  }
+}
+
+document.getElementById('register').onclick = register;
+document.getElementById('checkin').onclick = checkin;
+</script>
+</body>
+</html>
